@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { BookmarkNode } from "../lib/types";
-import ContextMenu from "./ContextMenu";
 
 interface Props {
   tree: BookmarkNode[];
@@ -13,6 +12,7 @@ interface Props {
 interface FolderSection {
   folder: BookmarkNode;
   bookmarks: BookmarkNode[];
+  breadcrumb: string[]; // ancestor titles, e.g. ["书签栏", "工作"]
 }
 
 type SortMode = "folder" | "time";
@@ -36,8 +36,8 @@ function timeBucket(ts: number): string {
   if (days === 0) return "今天";
   if (days === 1) return "昨天";
   if (days < 7) return "本周";
-  if (months < 1) return `${days} 天前`;      // 2-6天
-  if (years === 0) return `${months} 个月前`;  // 1-11个月
+  if (months < 1) return `${days} 天前`;
+  if (years === 0) return `${months} 个月前`;
   if (years === 1) return "去年";
   if (years === 2) return "前年";
   return `${years} 年前`;
@@ -55,34 +55,27 @@ export default function GridView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("folder");
-  const dragBookmark = useRef<{ id: string; parentId?: string } | null>(null);
+  const dragData = useRef<string | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
-  // context menu for folder headers
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; node: BookmarkNode } | null>(null);
 
-  // Build folder sections — each folder becomes a column
+  // Build sections: each folder with bookmarks or sub-folders = one column
   useEffect(() => {
     const result: FolderSection[] = [];
-    const seen = new Set<string>();
-    const walk = (nodes: BookmarkNode[]) => {
+    const walk = (nodes: BookmarkNode[], ancestors: BookmarkNode[] = []) => {
       for (const node of nodes) {
-        if (node.children && !seen.has(node.id)) {
-          seen.add(node.id);
-          const allBms: BookmarkNode[] = [];
-          // collect all descendant bookmarks for this folder
-          const collect = (items: BookmarkNode[]) => {
-            for (const c of items) {
-              if (c.url) allBms.push(c);
-              if (c.children) collect(c.children);
-            }
-          };
-          collect(node.children);
-          if (allBms.length > 0) {
-            result.push({ folder: node, bookmarks: allBms });
-          }
-          walk(node.children);
+        if (!node.children) continue;
+        const directBms = node.children.filter((c) => !!c.url);
+        const hasSubFolders = node.children.some((c) => !!c.children);
+        if (directBms.length > 0 || hasSubFolders) {
+          result.push({
+            folder: node,
+            bookmarks: directBms,
+            breadcrumb: ancestors.map((a) => a.title),
+          });
         }
+        walk(node.children, [...ancestors, node]);
       }
     };
     walk(tree);
@@ -105,7 +98,6 @@ export default function GridView({
     return () => document.removeEventListener("click", handler);
   }, [showFolderPicker]);
 
-  // Close folder context menu
   useEffect(() => {
     if (!folderMenu) return;
     const close = () => setFolderMenu(null);
@@ -113,13 +105,13 @@ export default function GridView({
     return () => window.removeEventListener("click", close);
   }, [folderMenu]);
 
-  // Time-sorted flat list — oldest first
+  // Time-sorted — oldest first
   const timeSortedBookmarks = useMemo(() => {
     const all: BookmarkNode[] = [];
     for (const s of sections) {
       for (const b of s.bookmarks) all.push(b);
     }
-    all.sort((a, b) => (a.dateAdded || 0) - (b.dateAdded || 0)); // oldest first
+    all.sort((a, b) => (a.dateAdded || 0) - (b.dateAdded || 0));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return all.filter(
@@ -129,7 +121,6 @@ export default function GridView({
     return all;
   }, [sections, searchQuery]);
 
-  // Group by time bucket — oldest groups first
   const timeGroups = useMemo(() => {
     const map = new Map<string, BookmarkNode[]>();
     for (const b of timeSortedBookmarks) {
@@ -143,9 +134,10 @@ export default function GridView({
         bookmarks,
         sortKey: Math.min(...bookmarks.map((b) => b.dateAdded || 0)),
       }))
-      .sort((a, b) => a.sortKey - b.sortKey); // oldest group first
+      .sort((a, b) => a.sortKey - b.sortKey);
   }, [timeSortedBookmarks]);
 
+  // Filter sections by search
   const filteredSections = searchQuery
     ? sections
         .map((s) => ({
@@ -215,7 +207,7 @@ export default function GridView({
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
-    dragBookmark.current = { id };
+    dragData.current = id;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
   };
@@ -223,12 +215,13 @@ export default function GridView({
   const handleSectionDrop = (e: React.DragEvent, folderId: string) => {
     e.preventDefault();
     setDragOverFolder(null);
-    if (dragBookmark.current) {
-      onMove(dragBookmark.current.id, folderId);
-      dragBookmark.current = null;
+    if (dragData.current) {
+      onMove(dragData.current, folderId);
+      dragData.current = null;
     }
   };
 
+  // All folders flat list for move picker
   const folderList = useMemo(() => {
     const folders: { id: string; title: string }[] = [];
     const walk = (nodes: BookmarkNode[]) => {
@@ -309,7 +302,7 @@ export default function GridView({
         </div>
       )}
 
-      {/* Folder mode */}
+      {/* Folder mode — each folder = one column */}
       {sortMode === "folder" &&
         filteredSections.map((section) => (
           <div
@@ -328,23 +321,28 @@ export default function GridView({
                 {collapsedSections.has(section.folder.id) ? "▶" : "▼"}
               </span>
               <span className="grid-section-icon">📁</span>
-              <h2 className="grid-section-title">{section.folder.title}</h2>
+              <div className="grid-section-title-wrap">
+                <h2 className="grid-section-title">{section.folder.title}</h2>
+                {section.breadcrumb.length > 0 && (
+                  <span className="grid-section-breadcrumb">
+                    {section.breadcrumb.join(" › ")}
+                  </span>
+                )}
+              </div>
               <span className="grid-section-count">{section.bookmarks.length}</span>
             </div>
             {!collapsedSections.has(section.folder.id) && (
               <div className="grid-section-body">
-                <FolderContent
-                  folder={section.folder}
-                  depth={0}
-                  selectedIds={selectedIds}
-                  totalSelected={totalSelected}
-                  searchQuery={searchQuery}
-                  onCardClick={handleCardClick}
-                  onToggleSelect={toggleSelect}
-                  onDragStart={handleDragStart}
-                  onContextMenu={onContextMenu}
-                  onMove={onMove}
-                />
+                {section.bookmarks.map((bm) => (
+                  <BookmarkCard
+                    key={bm.id}
+                    bm={bm}
+                    isSelected={selectedIds.has(bm.id)}
+                    onDragStart={handleDragStart}
+                    onClick={handleCardClick}
+                    onContextMenu={onContextMenu}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -391,123 +389,12 @@ export default function GridView({
   );
 }
 
-// ─── Recursive folder content renderer ───
-
-function FolderContent({
-  folder,
-  depth,
-  selectedIds,
-  totalSelected,
-  searchQuery,
-  onCardClick,
-  onToggleSelect,
-  onDragStart,
-  onContextMenu,
-  onMove,
-}: {
-  folder: BookmarkNode;
-  depth: number;
-  selectedIds: Set<string>;
-  totalSelected: number;
-  searchQuery: string;
-  onCardClick: (e: React.MouseEvent, bm: BookmarkNode) => void;
-  onToggleSelect: (id: string) => void;
-  onDragStart: (e: React.DragEvent, id: string) => void;
-  onContextMenu: (e: React.MouseEvent, node: BookmarkNode) => void;
-  onMove: (id: string, destId: string) => void;
-}) {
-  const [dragOverSub, setDragOverSub] = useState<string | null>(null);
-  if (!folder.children || folder.children.length === 0) return null;
-
-  const items: React.ReactNode[] = [];
-  for (const child of folder.children) {
-    if (child.url) {
-      // Bookmark leaf node
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = !searchQuery ||
-        child.title.toLowerCase().includes(q) ||
-        (child.url || "").toLowerCase().includes(q);
-      if (!matchesSearch) continue;
-
-      items.push(
-        <BookmarkCard
-          key={child.id}
-          bm={child}
-          isSelected={selectedIds.has(child.id)}
-          depth={depth}
-          onDragStart={onDragStart}
-          onClick={onCardClick}
-          onContextMenu={onContextMenu}
-        />
-      );
-    } else if (child.children) {
-      // Sub-folder: show as indented group
-      // Count visible bookmarks inside
-      let visibleCount = 0;
-      const countBms = (nodes: BookmarkNode[]) => {
-        for (const n of nodes) {
-          if (n.url) {
-            if (!searchQuery) visibleCount++;
-            else {
-              const q = searchQuery.toLowerCase();
-              if (n.title.toLowerCase().includes(q) || (n.url || "").toLowerCase().includes(q)) visibleCount++;
-            }
-          }
-          if (n.children) countBms(n.children);
-        }
-      };
-      countBms(child.children);
-      if (visibleCount === 0) continue;
-
-      const subId = `sub-${child.id}-${depth}`;
-      items.push(
-        <div
-          key={subId}
-          className={`grid-sub-group ${dragOverSub === child.id ? "drag-over" : ""}`}
-          style={{ paddingLeft: `${depth * 14}px` }}
-          onDragOver={(e) => { e.preventDefault(); setDragOverSub(child.id); }}
-          onDragLeave={() => setDragOverSub(null)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOverSub(null);
-            const id = dragRef.current;
-            if (id) onMove(id, child.id);
-          }}
-        >
-          <div className="grid-sub-header" title={`${child.title} — ${visibleCount} 个书签`}>
-            <span className="grid-sub-icon">📁</span>
-            <span className="grid-sub-title">{child.title}</span>
-            <span className="grid-sub-count">{visibleCount}</span>
-          </div>
-          <FolderContent
-            folder={child}
-            depth={depth + 1}
-            selectedIds={selectedIds}
-            totalSelected={totalSelected}
-            searchQuery={searchQuery}
-            onCardClick={onCardClick}
-            onToggleSelect={onToggleSelect}
-            onDragStart={onDragStart}
-            onContextMenu={onContextMenu}
-            onMove={onMove}
-          />
-        </div>
-      );
-    }
-  }
-  return <>{items}</>;
-}
-
-// HACK: global ref for drag data between components
-const dragRef = { current: "" };
-
 // ─── Bookmark Card ───
 
 function BookmarkCard({
   bm,
   isSelected,
   timeLabel,
-  depth = 0,
   onDragStart,
   onClick,
   onContextMenu,
@@ -515,7 +402,6 @@ function BookmarkCard({
   bm: BookmarkNode;
   isSelected: boolean;
   timeLabel?: string;
-  depth?: number;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onClick: (e: React.MouseEvent, bm: BookmarkNode) => void;
   onContextMenu: (e: React.MouseEvent, node: BookmarkNode) => void;
@@ -523,19 +409,13 @@ function BookmarkCard({
   return (
     <div
       className={`grid-card ${isSelected ? "selected" : ""}`}
-      style={depth > 0 ? { paddingLeft: `${12 + depth * 14}px` } : undefined}
       draggable
-      onDragStart={(e) => {
-        dragRef.current = bm.id;
-        onDragStart(e, bm.id);
-      }}
+      onDragStart={(e) => onDragStart(e, bm.id)}
       onClick={(e) => onClick(e, bm)}
       onContextMenu={(e) => onContextMenu(e, bm)}
       title={`${bm.title}\n${bm.url}${timeLabel ? `\n收藏: ${timeLabel}` : ""}`}
     >
-      <span className="grid-card-check">
-        {isSelected ? "◉" : "○"}
-      </span>
+      <span className="grid-card-check">{isSelected ? "◉" : "○"}</span>
       <img
         className="grid-card-favicon"
         src={bm.url ? `https://www.google.com/s2/favicons?domain=${new URL(bm.url).hostname}&sz=32` : ""}
