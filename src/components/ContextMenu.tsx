@@ -16,6 +16,10 @@ export default function ContextMenu({ x, y, type, onAction }: Props) {
     >
       {type === "folder" && (
         <>
+          <div className="context-menu-item" onClick={() => onAction("open-all")}>
+            打开全部
+          </div>
+          <div className="context-menu-sep" />
           <div className="context-menu-item" onClick={() => onAction("delete-folder")}>
             删除文件夹
           </div>

@@ -6,6 +6,7 @@ interface Props {
   searchQuery: string;
   onMove: (id: string, destinationFolderId: string) => void;
   onDeleteSelected: (ids: string[]) => void;
+  onDeleteFolder?: (folderId: string, folderTitle: string) => void;
   onContextMenu: (e: React.MouseEvent, node: BookmarkNode) => void;
 }
 
@@ -48,6 +49,7 @@ export default function GridView({
   searchQuery,
   onMove,
   onDeleteSelected,
+  onDeleteFolder,
   onContextMenu,
 }: Props) {
   const [sections, setSections] = useState<FolderSection[]>([]);
@@ -55,10 +57,12 @@ export default function GridView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("folder");
-  const dragData = useRef<string | null>(null);
+  const dragData = useRef<string[] | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; node: BookmarkNode } | null>(null);
+  const [deadLinks, setDeadLinks] = useState<Set<string>>(new Set());
+  const [checkingLinks, setCheckingLinks] = useState(false);
 
   // Build sections: each folder with bookmarks or sub-folders = one column
   useEffect(() => {
@@ -104,6 +108,60 @@ export default function GridView({
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [folderMenu]);
+
+  // Dead link detection
+  useEffect(() => {
+    const allBookmarks: BookmarkNode[] = [];
+    for (const s of sections) {
+      for (const b of s.bookmarks) allBookmarks.push(b);
+    }
+    if (allBookmarks.length === 0) return;
+
+    setCheckingLinks(true);
+    const dead = new Set<string>();
+    let completed = 0;
+    const controller = new AbortController();
+
+    for (const bm of allBookmarks) {
+      if (!bm.url) continue;
+      fetch(bm.url, { method: "HEAD", mode: "no-cors", signal: controller.signal })
+        .then((res) => {
+          // no-cors mode returns opaque response → status is always 0
+          // If we get here, the request didn't throw → link is reachable
+        })
+        .catch(() => {
+          dead.add(bm.id);
+        })
+        .finally(() => {
+          completed++;
+          if (completed >= allBookmarks.length) {
+            setDeadLinks(dead);
+            setCheckingLinks(false);
+          }
+        });
+    }
+
+    // If all finish synchronously (or fail fast), ensure state updates
+    setTimeout(() => {
+      if (completed < allBookmarks.length) return;
+      setDeadLinks(dead);
+      setCheckingLinks(false);
+    }, 100);
+
+    return () => controller.abort();
+  }, [sections]);
+
+  // Listen for keyboard events from App
+  useEffect(() => {
+    const onSelectAll = () => selectAll();
+    const onDelete = () => handleDeleteSelected();
+    window.addEventListener("grid-select-all", onSelectAll);
+    window.addEventListener("grid-delete-selected", onDelete);
+    return () => {
+      window.removeEventListener("grid-select-all", onSelectAll);
+      window.removeEventListener("grid-delete-selected", onDelete);
+    };
+  }, [sections, sortMode, selectedIds]);
 
   // Time-sorted — oldest first
   const timeSortedBookmarks = useMemo(() => {
@@ -207,16 +265,21 @@ export default function GridView({
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
-    dragData.current = id;
+    const ids = selectedIds.has(id) && selectedIds.size > 1
+      ? [...selectedIds]
+      : [id];
+    dragData.current = ids;
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.setData("text/plain", JSON.stringify(ids));
   };
 
   const handleSectionDrop = (e: React.DragEvent, folderId: string) => {
     e.preventDefault();
     setDragOverFolder(null);
     if (dragData.current) {
-      onMove(dragData.current, folderId);
+      for (const id of dragData.current) {
+        onMove(id, folderId);
+      }
       dragData.current = null;
     }
   };
@@ -245,12 +308,18 @@ export default function GridView({
 
   const handleFolderMenuAction = (action: string) => {
     if (action === "delete-folder" && folderMenu) {
-      chrome.bookmarks.removeTree(folderMenu.node.id).then(() => window.location.reload());
+      if (onDeleteFolder) {
+        onDeleteFolder(folderMenu.node.id, folderMenu.node.title);
+      } else {
+        chrome.bookmarks.removeTree(folderMenu.node.id).then(() => window.location.reload());
+      }
     }
     setFolderMenu(null);
   };
 
   const hasItems = sortMode === "folder" ? filteredSections.length > 0 : timeGroups.length > 0;
+
+  const showBrokenInfo = !checkingLinks && deadLinks.size > 0;
 
   if (!hasItems) {
     return (
@@ -302,11 +371,18 @@ export default function GridView({
         </div>
       )}
 
+      {showBrokenInfo && (
+        <div className="grid-section grid-section-warning" style={{ padding: "8px 16px", gridColumn: "1 / -1" }}>
+          ⚠️ 发现 {deadLinks.size} 个可能失效的链接（显示为 <span className="grid-card-broken">🔴</span>）
+        </div>
+      )}
+
       {/* Folder mode — each folder = one column */}
       {sortMode === "folder" &&
         filteredSections.map((section) => (
           <div
             key={section.folder.id}
+            data-folder-id={section.folder.id}
             className={`grid-section ${dragOverFolder === section.folder.id ? "drag-over" : ""}`}
             onDragOver={(e) => { e.preventDefault(); setDragOverFolder(section.folder.id); }}
             onDragLeave={() => setDragOverFolder(null)}
@@ -338,6 +414,7 @@ export default function GridView({
                     key={bm.id}
                     bm={bm}
                     isSelected={selectedIds.has(bm.id)}
+                    isBroken={deadLinks.has(bm.id)}
                     onDragStart={handleDragStart}
                     onClick={handleCardClick}
                     onContextMenu={onContextMenu}
@@ -363,6 +440,7 @@ export default function GridView({
                   key={bm.id}
                   bm={bm}
                   isSelected={selectedIds.has(bm.id)}
+                  isBroken={deadLinks.has(bm.id)}
                   timeLabel={relativeTime(bm.dateAdded || 0)}
                   onDragStart={handleDragStart}
                   onClick={handleCardClick}
@@ -394,6 +472,7 @@ export default function GridView({
 function BookmarkCard({
   bm,
   isSelected,
+  isBroken,
   timeLabel,
   onDragStart,
   onClick,
@@ -401,6 +480,7 @@ function BookmarkCard({
 }: {
   bm: BookmarkNode;
   isSelected: boolean;
+  isBroken?: boolean;
   timeLabel?: string;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onClick: (e: React.MouseEvent, bm: BookmarkNode) => void;
@@ -413,7 +493,7 @@ function BookmarkCard({
       onDragStart={(e) => onDragStart(e, bm.id)}
       onClick={(e) => onClick(e, bm)}
       onContextMenu={(e) => onContextMenu(e, bm)}
-      title={`${bm.title}\n${bm.url}${timeLabel ? `\n收藏: ${timeLabel}` : ""}`}
+      title={`${bm.title}\n${bm.url}${timeLabel ? `\n收藏: ${timeLabel}` : ""}${isBroken ? "\n⚠️ 链接可能已失效" : ""}`}
     >
       <span className="grid-card-check">{isSelected ? "◉" : "○"}</span>
       <img
@@ -423,6 +503,7 @@ function BookmarkCard({
         onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
       />
       <span className="grid-card-title">{bm.title || "无标题"}</span>
+      {isBroken && <span className="grid-card-broken">🔴</span>}
       {timeLabel && <span className="grid-card-time">{timeLabel}</span>}
     </div>
   );

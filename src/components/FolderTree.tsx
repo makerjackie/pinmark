@@ -6,9 +6,10 @@ interface Props {
   selectedFolder: string | null;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, node: BookmarkNode) => void;
+  onDropBookmarks?: (bookmarkIds: string[], destinationFolderId: string) => void;
 }
 
-export default function FolderTree({ tree, selectedFolder, onSelect, onContextMenu }: Props) {
+export default function FolderTree({ tree, selectedFolder, onSelect, onContextMenu, onDropBookmarks }: Props) {
   return (
     <div className="folder-tree">
       {tree.map((node) => (
@@ -19,6 +20,7 @@ export default function FolderTree({ tree, selectedFolder, onSelect, onContextMe
           selectedFolder={selectedFolder}
           onSelect={onSelect}
           onContextMenu={onContextMenu}
+          onDropBookmarks={onDropBookmarks}
         />
       ))}
     </div>
@@ -31,12 +33,14 @@ function FolderNode({
   selectedFolder,
   onSelect,
   onContextMenu,
+  onDropBookmarks,
 }: {
   node: BookmarkNode;
   depth: number;
   selectedFolder: string | null;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, node: BookmarkNode) => void;
+  onDropBookmarks?: (bookmarkIds: string[], destinationFolderId: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -45,15 +49,22 @@ function FolderNode({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const bookmarkId = e.dataTransfer.getData("text/bookmark-id");
-    if (bookmarkId) {
+    const raw = e.dataTransfer.getData("text/plain");
+    if (!raw) return;
+    try {
+      const ids: string[] = JSON.parse(raw);
+      if (Array.isArray(ids) && ids.length > 0) {
+        onSelect(node.id);
+        if (onDropBookmarks) {
+          onDropBookmarks(ids, node.id);
+        }
+      }
+    } catch {
+      // Single ID fallback (legacy format)
       onSelect(node.id);
-      // dispatch a custom event for the move
-      window.dispatchEvent(
-        new CustomEvent("bookmark-drop", {
-          detail: { bookmarkId, destinationId: node.id },
-        })
-      );
+      if (onDropBookmarks) {
+        onDropBookmarks([raw], node.id);
+      }
     }
   };
 
@@ -99,6 +110,7 @@ function FolderNode({
                 selectedFolder={selectedFolder}
                 onSelect={onSelect}
                 onContextMenu={onContextMenu}
+                onDropBookmarks={onDropBookmarks}
               />
             ) : null
           )}

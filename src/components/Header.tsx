@@ -6,6 +6,9 @@ interface Props {
   bookmarkCount: number;
   viewMode: "grid" | "list";
   onViewModeChange: (mode: "grid" | "list") => void;
+  darkMode: boolean;
+  onDarkModeChange: (v: boolean) => void;
+  searchRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export default function Header({
@@ -14,6 +17,9 @@ export default function Header({
   bookmarkCount,
   viewMode,
   onViewModeChange,
+  darkMode,
+  onDarkModeChange,
+  searchRef,
 }: Props) {
   return (
     <header className="header">
@@ -21,13 +27,21 @@ export default function Header({
       <span className="header-count">共 {bookmarkCount} 个书签</span>
       <div className="header-search">
         <input
+          ref={searchRef}
           type="text"
-          placeholder="搜索书签..."
+          placeholder="搜索书签... (⌘F)"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="search-input"
         />
       </div>
+      <button
+        className="dark-toggle"
+        onClick={() => onDarkModeChange(!darkMode)}
+        title={darkMode ? "浅色模式" : "深色模式"}
+      >
+        {darkMode ? "☀️" : "🌙"}
+      </button>
       <div className="view-toggle">
         <button
           className={`view-toggle-btn ${viewMode === "grid" ? "active" : ""}`}
