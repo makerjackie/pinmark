@@ -95,6 +95,9 @@ export default function App() {
             tree={tree}
             searchQuery={searchQuery}
             onMove={moveBookmark}
+            onDeleteSelected={(ids) => {
+              Promise.all(ids.map((id) => chrome.bookmarks.remove(id).catch(() => chrome.bookmarks.removeTree(id).catch(() => {})))).then(() => window.location.reload());
+            }}
             onContextMenu={handleBookmarkContextMenu}
           />
         </div>

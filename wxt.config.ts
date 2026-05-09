@@ -5,8 +5,8 @@ export default defineConfig({
   extensionApi: "chrome",
   modules: ["@wxt-dev/module-react"],
   manifest: {
-    name: "Bookmark Cleaner",
-    short_name: "BookmarkCleaner",
+    name: "Pinmark",
+    short_name: "Pinmark",
     version: "0.1.0",
     permissions: ["bookmarks", "tabs"],
     action: {},

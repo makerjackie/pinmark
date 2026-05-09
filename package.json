@@ -1,9 +1,9 @@
 {
-  "name": "bookmark-cleaner",
+  "name": "pinmark",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A simple Chrome extension for managing and cleaning up bookmarks.",
+  "description": "A simple bookmark manager for Chrome — organize, browse, and clean up bookmarks.",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
