@@ -690,6 +690,10 @@ html.dark .bookmark-item.selected {
   background: var(--hover);
 }
 
+.grid-section.dragging {
+  opacity: 0.5;
+}
+
 .grid-section-toggle {
   font-size: 9px;
   width: 12px;

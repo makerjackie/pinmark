@@ -400,6 +400,16 @@ export default function GridView({
               className="grid-section-header"
               onClick={() => toggleSection(section.folder.id)}
               onContextMenu={(e) => handleFolderRightClick(e, section.folder)}
+              draggable={section.folder.id !== "0" && section.folder.id !== "1"}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", JSON.stringify([section.folder.id]));
+                // Reduce opacity during drag for visual feedback
+                (e.target as HTMLElement).closest(".grid-section")?.classList.add("dragging");
+              }}
+              onDragEnd={(e) => {
+                (e.target as HTMLElement).closest(".grid-section")?.classList.remove("dragging");
+              }}
             >
               <span className="grid-section-toggle">
                 {collapsedSections.has(section.folder.id) ? "▶" : "▼"}
