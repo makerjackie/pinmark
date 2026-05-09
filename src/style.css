@@ -887,3 +887,16 @@ html.dark .bookmark-item.selected {
 .toast-close:hover {
   opacity: 1;
 }
+
+/* Version badge */
+.version-badge {
+  position: fixed;
+  bottom: 6px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.35;
+  user-select: none;
+  pointer-events: none;
+  z-index: 0;
+}

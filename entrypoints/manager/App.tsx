@@ -7,7 +7,10 @@ import ToolBar from "../../src/components/ToolBar";
 import GridView from "../../src/components/GridView";
 import ContextMenu from "../../src/components/ContextMenu";
 import Toast from "../../src/components/Toast";
+import { logger } from "../../src/lib/logger";
 import type { BookmarkNode, ContextMenuState } from "../../src/lib/types";
+
+const EXT_VERSION = chrome.runtime.getManifest().version;
 
 export default function App() {
   const {
@@ -30,6 +33,11 @@ export default function App() {
     emptyFolders,
     duplicateBookmarks,
   } = useBookmarks();
+
+  // Log startup
+  React.useEffect(() => {
+    logger.info(`Pinmark v${EXT_VERSION} initialized`);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -150,7 +158,7 @@ export default function App() {
         } catch {
           try {
             const [node] = await chrome.bookmarks.getSubTree(id);
-            saved.push({ id, node: node[0] });
+            saved.push({ id, node });
             await chrome.bookmarks.removeTree(id);
           } catch {
             // skip
@@ -261,7 +269,7 @@ export default function App() {
     : [];
 
   const currentFolderTitle =
-    selectedFolder && flatFolders.find((f) => f.id === selectedFolder)?.title;
+    selectedFolder && flatFolders.find((f) => f.node.id === selectedFolder)?.node.title;
 
   return (
     <div className={`app view-${viewMode}${darkMode ? " dark" : ""}`}>
@@ -370,6 +378,8 @@ export default function App() {
       )}
 
       {toast && <Toast message={toast.message} onUndo={toast.onUndo} onClose={() => setToast(null)} />}
+
+      <span className="version-badge" title={`Pinmark v${EXT_VERSION}`}>v{EXT_VERSION}</span>
     </div>
   );
 }

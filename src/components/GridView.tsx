@@ -413,7 +413,6 @@ export default function GridView({
                   key={bm.id}
                   bm={bm}
                   isSelected={selectedIds.has(bm.id)}
-                  isBroken={deadLinks.has(bm.id)}
                   timeLabel={relativeTime(bm.dateAdded || 0)}
                   onDragStart={handleDragStart}
                   onClick={handleCardClick}

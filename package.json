@@ -1,17 +1,20 @@
 {
   "name": "pinmark",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A simple bookmark manager for Chrome — organize, browse, and clean up bookmarks.",
+  "description": "A minimal yet powerful bookmark manager for Chrome — organize, browse, search, and clean up your bookmarks with ease.",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
     "check": "wxt prepare && tsc --noEmit",
-    "build:website": "npm run build && mkdir -p dist-website && cp -r website/* dist-website/ && cd .output/chrome-mv3 && zip -r ../../dist-website/pinmark-v0.1.zip . -x '*.DS_Store'"
+    "build:website": "npm run build && mkdir -p dist-website && cp -r website/* dist-website/ && cd .output/chrome-mv3 && VERSION=$(node -p \"require('../package.json').version\") && zip -r \"../../dist-website/pinmark-v${VERSION}.zip\" . -x '*.DS_Store'"
   },
   "devDependencies": {
+    "@types/chrome": "^0.1.42",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@wxt-dev/module-react": "^1.2.2",
     "typescript": "^5.9.0",
     "wxt": "^0.20.25"
