@@ -276,9 +276,17 @@ export default function GridView({
   const handleSectionDrop = (e: React.DragEvent, folderId: string) => {
     e.preventDefault();
     setDragOverFolder(null);
-    if (dragData.current) {
-      for (const id of dragData.current) {
-        onMove(id, folderId);
+    let ids = dragData.current;
+    // If not dragging from within GridView, try reading from dataTransfer
+    if (!ids) {
+      const raw = e.dataTransfer.getData("text/plain");
+      if (raw) {
+        try { ids = JSON.parse(raw); } catch { ids = [raw]; }
+      }
+    }
+    if (ids) {
+      for (const id of ids) {
+        if (id !== folderId) onMove(id, folderId);
       }
       dragData.current = null;
     }
