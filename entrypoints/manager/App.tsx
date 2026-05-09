@@ -4,6 +4,7 @@ import Header from "../../src/components/Header";
 import FolderTree from "../../src/components/FolderTree";
 import BookmarkList from "../../src/components/BookmarkList";
 import ToolBar from "../../src/components/ToolBar";
+import GridView from "../../src/components/GridView";
 import ContextMenu from "../../src/components/ContextMenu";
 import type { BookmarkNode, ContextMenuState } from "../../src/lib/types";
 
@@ -29,11 +30,12 @@ export default function App() {
   } = useBookmarks();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const handleFolderContextMenu = (e: React.MouseEvent, node: BookmarkNode) => {
     e.preventDefault();
     e.stopPropagation();
-    if (node.id === "0" || node.id === "1") return; // can't delete root/other
+    if (node.id === "0" || node.id === "1") return;
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -64,7 +66,6 @@ export default function App() {
     setContextMenu(null);
   };
 
-  // close context menu on click outside
   React.useEffect(() => {
     const close = () => setContextMenu(null);
     window.addEventListener("click", close);
@@ -79,60 +80,78 @@ export default function App() {
     selectedFolder && flatFolders.find((f) => f.id === selectedFolder)?.title;
 
   return (
-    <div className="app">
+    <div className={`app view-${viewMode}`}>
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         bookmarkCount={bookmarkCount}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
-      <div className="main-layout">
-        <aside className="folder-panel">
-          <FolderTree
+
+      {viewMode === "grid" ? (
+        <div className="grid-layout">
+          <GridView
             tree={tree}
-            selectedFolder={selectedFolder}
-            onSelect={selectFolder}
-            onContextMenu={handleFolderContextMenu}
+            searchQuery={searchQuery}
+            onMove={moveBookmark}
+            onContextMenu={handleBookmarkContextMenu}
           />
-          <button className="btn-new-folder" onClick={() => createFolder(selectedFolder || "1")}>
-            + 新建文件夹
-          </button>
-        </aside>
-        <main className="bookmark-panel">
-          {selectedFolder ? (
-            <>
-              <ToolBar
-                folderTitle={currentFolderTitle || ""}
-                bookmarkCount={currentBookmarks.length}
-                selectedCount={selectedBookmarkIds.size}
-                allSelected={
-                  currentBookmarks.length > 0 &&
-                  currentBookmarks.every((b) => selectedBookmarkIds.has(b.id))
-                }
-                onToggleSelectAll={() =>
-                  toggleSelectAll(
-                    currentBookmarks.map((b) => b.id),
+        </div>
+      ) : (
+        <div className="main-layout">
+          <aside className="folder-panel">
+            <FolderTree
+              tree={tree}
+              selectedFolder={selectedFolder}
+              onSelect={selectFolder}
+              onContextMenu={handleFolderContextMenu}
+            />
+            <button
+              className="btn-new-folder"
+              onClick={() => createFolder(selectedFolder || "1")}
+            >
+              + 新建文件夹
+            </button>
+          </aside>
+          <main className="bookmark-panel">
+            {selectedFolder ? (
+              <>
+                <ToolBar
+                  folderTitle={currentFolderTitle || ""}
+                  bookmarkCount={currentBookmarks.length}
+                  selectedCount={selectedBookmarkIds.size}
+                  allSelected={
+                    currentBookmarks.length > 0 &&
                     currentBookmarks.every((b) => selectedBookmarkIds.has(b.id))
-                  )
-                }
-                onDeleteSelected={deleteSelected}
-                emptyFolders={emptyFolders}
-                duplicateBookmarks={duplicateBookmarks}
-              />
-              <BookmarkList
-                bookmarks={currentBookmarks}
-                selectedIds={selectedBookmarkIds}
-                onToggle={toggleBookmark}
-                onMove={moveBookmark}
-                onContextMenu={handleBookmarkContextMenu}
-              />
-            </>
-          ) : (
-            <div className="empty-state">
-              <p>请从左侧选择一个文件夹</p>
-            </div>
-          )}
-        </main>
-      </div>
+                  }
+                  onToggleSelectAll={() =>
+                    toggleSelectAll(
+                      currentBookmarks.map((b) => b.id),
+                      currentBookmarks.every((b) => selectedBookmarkIds.has(b.id))
+                    )
+                  }
+                  onDeleteSelected={deleteSelected}
+                  emptyFolders={emptyFolders}
+                  duplicateBookmarks={duplicateBookmarks}
+                />
+                <BookmarkList
+                  bookmarks={currentBookmarks}
+                  selectedIds={selectedBookmarkIds}
+                  onToggle={toggleBookmark}
+                  onMove={moveBookmark}
+                  onContextMenu={handleBookmarkContextMenu}
+                />
+              </>
+            ) : (
+              <div className="empty-state">
+                <p>请从左侧选择一个文件夹</p>
+              </div>
+            )}
+          </main>
+        </div>
+      )}
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
